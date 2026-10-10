@@ -1,0 +1,44 @@
+name: Test APK (dev variant, debug-signed)
+
+# Fork-only helper for device testing. Not part of any upstream PR.
+on:
+  push:
+    branches: ["test-apk/**"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      GRADLE_OPTS: "-Dorg.gradle.jvmargs=\"-Xmx6144m -XX:MaxMetaspaceSize=1024m\""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install and prebuild
+        run: |
+          pnpm install --frozen-lockfile
+          cd SparkyFitnessMobile
+          APP_VARIANT=dev npx expo prebuild --platform android --no-install
+          sed -i 's/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=1024m/' android/gradle.properties
+          printf '\nreactNativeArchitectures=arm64-v8a\n' >> android/gradle.properties
+          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+          chmod +x android/gradlew
+      - name: Build APK
+        run: |
+          cd SparkyFitnessMobile/android
+          ./gradlew :react-native-async-storage_async-storage:generateCodegenArtifactsFromSchema
+          ./gradlew :app:assembleRelease -PreactNativeArchitectures=arm64-v8a --stacktrace
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sparkyfitness-dev-apk
+          path: SparkyFitnessMobile/android/app/build/outputs/apk/release/*.apk
+          retention-days: 7
