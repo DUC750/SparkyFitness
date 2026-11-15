@@ -1,6 +1,8 @@
 import type {
   FoodPhotoLogRequest,
   FoodPhotoLogResponse,
+  LastCookedFoodEntry,
+  LastCookedFoodEntryResponse,
 } from '@workspace/shared';
 import { apiCall } from '../api';
 import { buildImageFormData } from '../imageRequest';
@@ -28,6 +30,8 @@ export interface FoodEntryCreateData {
   variant_id?: string | null;
   /** Per-occurrence markdown note; independent of the food's own `notes`. */
   notes?: string | null;
+  /** Cooked weight eaten, in `unit`; `quantity` is then the raw weight. */
+  cooked_quantity?: number | null;
 }
 export const updateFoodEntry = async (
   id: string,
@@ -58,6 +62,21 @@ export const loadMiniNutritionTrendData = async (
     }
   );
   return data || []; // Return empty array if 404 (no data found)
+};
+
+/**
+ * The person's last cooked entry of a food, used to pre-fill the batch yield.
+ * Null when there is none, and on a server that predates the endpoint.
+ */
+export const getLastCookedFoodEntry = async (
+  foodId: string
+): Promise<LastCookedFoodEntry | null> => {
+  const params = new URLSearchParams({ food_id: foodId });
+  const data = await apiCall<LastCookedFoodEntryResponse | null>(
+    `/food-entries/last-cooked?${params.toString()}`,
+    { method: 'GET', suppress404Toast: true }
+  );
+  return data?.entry ?? null;
 };
 
 export const createFoodEntry = async (
