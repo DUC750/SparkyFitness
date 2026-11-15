@@ -1,0 +1,58 @@
+name: Device test APK (fork only)
+
+# Only on DUC750/SparkyFitness, branch test-apk/cooked-weight. Not part of
+# the upstream PR. Builds the dev variant (own package id, installs next to the
+# store app) from this branch as a release build with the embedded JS bundle,
+# signed with the debug key.
+on:
+  workflow_dispatch:
+  push:
+    branches: [test-apk/cooked-weight]
+
+jobs:
+  apk:
+    if: github.repository == 'DUC750/SparkyFitness'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      GRADLE_OPTS: "-Dorg.gradle.jvmargs=\"-Xmx6144m -XX:MaxMetaspaceSize=1024m\""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install and prebuild
+        run: |
+          pnpm install --frozen-lockfile
+          cd SparkyFitnessMobile
+          APP_VARIANT=dev npx expo prebuild --platform android
+          sed -i 's/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx6144m -XX:MaxMetaspaceSize=1024m/' android/gradle.properties
+          sed -i 's/^reactNativeArchitectures=.*/reactNativeArchitectures=arm64-v8a/' android/gradle.properties
+      - name: Build release APK (debug-signed)
+        env:
+          APP_VARIANT: dev
+        run: |
+          cd SparkyFitnessMobile/android
+          chmod +x gradlew
+          ./gradlew :react-native-async-storage_async-storage:generateCodegenArtifactsFromSchema
+          ./gradlew :app:assembleRelease --stacktrace
+      - name: Show package and signer
+        run: |
+          APK=$(find SparkyFitnessMobile/android/app/build/outputs/apk/release -name '*.apk' | head -n 1)
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | tail -n 1)
+          echo "APK=$APK"
+          "$BT"/aapt dump badging "$APK" | head -n 1 || true
+          "$BT"/apksigner verify --print-certs "$APK" | head -n 3 || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sparkyfitness-rest-end-focus-dev
+          path: SparkyFitnessMobile/android/app/build/outputs/apk/release/*.apk
+          retention-days: 14
